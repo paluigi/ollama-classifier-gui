@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ollama-classifier-gui"
+version = "0.1.0"
+description = "A desktop GUI application for text classification using Ollama"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Luigi Palumbo", email = "luigi.palumbo@example.com" },
+]
+keywords = ["ollama", "classifier", "text-classification", "llm", "flet", "gui"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+]
+dependencies = [
+    "flet>=0.84.0",
+    "flet-secure-storage>=0.84.0",
+    "ollama-classifier>=0.2.0",
+    "polars>=1.40.0",
+    "openpyxl>=3.1.5",
+    "pyshortcuts>=1.9.7",
+]
+
+[project.scripts]
+ollama-classifier-gui = "ollama_classifier_gui.app:main"
+
+[project.urls]
+Homepage = "https://github.com/paluigi-moltis/ollama-classifier-gui"
+Repository = "https://github.com/paluigi-moltis/ollama-classifier-gui"
+Issues = "https://github.com/paluigi-moltis/ollama-classifier-gui/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ollama_classifier_gui"]
