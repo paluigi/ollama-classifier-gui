@@ -14,6 +14,19 @@ from pathlib import Path
 from typing import Dict, List
 
 # ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+BACKEND_TYPES = ["ollama", "vllm", "sglang", "llamacpp"]
+
+DEFAULT_ENDPOINTS = {
+    "ollama": "http://localhost:11434",
+    "vllm": "http://localhost:8000/v1",
+    "sglang": "http://localhost:30000/v1",
+    "llamacpp": "http://localhost:8080/v1",
+}
+
+# ---------------------------------------------------------------------------
 # System‑dependency detection (Linux only)
 # ---------------------------------------------------------------------------
 
@@ -30,15 +43,11 @@ def _linux_missing_requirements() -> List[str]:
     * One keyring service: gnome-keyring, kwalletmanager, or secret-service
     """
     missing: List[str] = []
-    # zenity
     if shutil.which("zenity") is None:
         missing.append("zenity (install with: sudo apt install zenity)")
-    # libsecret development/runtime library (runtime required)
-    # we just check the shared object existence
     libsecret = shutil.which("libsecret-1.so") or shutil.which("libsecret-1.so.0")
     if libsecret is None:
         missing.append("libsecret-1-0 (install with: sudo apt install libsecret-1-0)")
-    # keyring service – at least one must be present
     keyring_candidates = [
         "gnome-keyring-daemon",
         "kwalletmanager5",
@@ -63,9 +72,12 @@ def check_system_dependencies() -> List[str]:
 
 def _default_config() -> Dict[str, str]:
     return {
-        "host": "http://localhost:11434",
+        "backend_type": "ollama",
+        "endpoint": "http://localhost:11434",
         "model": "llama3.2",
-        "theme": "system",  # "light", "dark", or "system"
+        "theme": "system",
+        "batch_size": "1",
+        "output_format": "top_label",
     }
 
 
@@ -74,12 +86,12 @@ def config_path() -> Path:
 
     Linux:   $XDG_CONFIG_HOME/ollama-classifier-gui/config.json (fallback `~/.config`)
     macOS:   ~/Library/Application Support/ollama-classifier-gui/config.json
-    Windows: %APPDATA%\ollama-classifier-gui\config.json
+    Windows: %APPDATA%\\ollama-classifier-gui\\config.json
     """
     system = platform.system()
     if system == "Linux":
         base = os.getenv("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
-    elif system == "Darwin":  # macOS
+    elif system == "Darwin":
         base = os.path.expanduser("~/Library/Application Support")
     elif system == "Windows":
         base = os.getenv("APPDATA", "")
@@ -94,18 +106,15 @@ def config_path() -> Path:
 def load_config() -> Dict[str, str]:
     cfg_file = config_path()
     if not cfg_file.is_file():
-        # create a fresh default file
         save_config(_default_config())
         return _default_config()
     try:
         with cfg_file.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        # ensure required keys exist
         for k, v in _default_config().items():
             data.setdefault(k, v)
         return data
     except Exception:
-        # corrupted file – reset to defaults
         save_config(_default_config())
         return _default_config()
 
@@ -136,5 +145,3 @@ async def show_missing_dependencies(page, missing: List[str]):
     page.overlay.append(dlg)
     await page.update_async()
     await dlg.wait_dismiss()
-
-# End of utils.py

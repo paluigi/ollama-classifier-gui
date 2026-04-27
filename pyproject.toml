@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ollama-classifier-gui"
-version = "0.1.0"
-description = "A desktop GUI application for text classification using Ollama"
+version = "0.2.0"
+description = "A desktop GUI application for text classification using LLMs (Ollama, vLLM, SGLang, llama.cpp)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
     { name = "Luigi Palumbo", email = "luigi.palumbo@example.com" },
 ]
-keywords = ["ollama", "classifier", "text-classification", "llm", "flet", "gui"]
+keywords = ["ollama", "classifier", "text-classification", "llm", "flet", "gui", "vllm", "sglang", "llama-cpp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: End Users/Desktop",
@@ -26,7 +26,7 @@ classifiers = [
 dependencies = [
     "flet>=0.84.0",
     "flet-secure-storage>=0.84.0",
-    "ollama-classifier>=0.2.0",
+    "ollama-classifier[backends]>=0.3.0",
     "polars>=1.40.0",
     "openpyxl>=3.1.5",
     "pyshortcuts>=1.9.7",

@@ -1,6 +1,7 @@
 """Ollama Classifier GUI - Main application.
 
-A desktop Flet app for text classification using Ollama.
+A desktop Flet app for text classification using multiple LLM backends
+(Ollama, vLLM, SGLang, llama.cpp).
 """
 
 import asyncio
@@ -11,10 +12,10 @@ from typing import Any
 
 import flet as ft
 import flet_secure_storage as fss
-from ollama import AsyncClient
-from ollama_classifier import OllamaClassifier
 
 from .utils import (
+    BACKEND_TYPES,
+    DEFAULT_ENDPOINTS,
     check_system_dependencies,
     show_missing_dependencies,
     load_config,
@@ -28,33 +29,39 @@ class OllamaClassifierApp:
     def __init__(self, page: ft.Page):
         self.page = page
         self.config = load_config()
-        self.client: AsyncClient | None = None
-        self.classifier: OllamaClassifier | None = None
         self.secure_storage = fss.SecureStorage()
 
+        # Backend state
+        self._ollama_client: Any | None = None
+        self._ollama_classifier: Any | None = None
+        self._llm_classifier: Any | None = None
+
         # ---- UI refs: Settings ----
-        self.host_field = ft.Ref[ft.TextField]()
-        self.model_dropdown = ft.Ref[ft.Dropdown]()
+        self.backend_dropdown = ft.Ref[ft.Dropdown]()
+        self.endpoint_field = ft.Ref[ft.TextField]()
+        self.model_field = ft.Ref[ft.TextField]()
         self.api_key_field = ft.Ref[ft.TextField]()
         self.theme_switch = ft.Ref[ft.Switch]()
         self.test_connection_btn = ft.Ref[ft.ElevatedButton]()
         self.connection_status = ft.Ref[ft.Text]()
+        self.batch_size_field = ft.Ref[ft.TextField]()
 
         # ---- UI refs: Data Input ----
         self.data_file_path_text = ft.Ref[ft.Text]()
-        self.sheet_dropdown = ft.Ref[ft.Dropdown]()
+        self.data_sheet_dropdown = ft.Ref[ft.Dropdown]()
         self.text_column_dropdown = ft.Ref[ft.Dropdown]()
         self.data_preview_table = ft.Ref[ft.DataTable]()
 
         # ---- UI refs: Schema ----
         self.manual_labels_list = ft.Ref[ft.Column]()
         self.schema_file_path_text = ft.Ref[ft.Text]()
+        self.schema_sheet_dropdown = ft.Ref[ft.Dropdown]()
         self.label_column_dropdown = ft.Ref[ft.Dropdown]()
         self.description_column_dropdown = ft.Ref[ft.Dropdown]()
         self.schema_preview_text = ft.Ref[ft.Text]()
         self.system_prompt_field = ft.Ref[ft.TextField]()
         self.classify_method_radio = ft.Ref[ft.RadioGroup]()
-        self.save_all_probs_switch = ft.Ref[ft.Switch]()
+        self.output_format_radio = ft.Ref[ft.RadioGroup]()
 
         # ---- UI refs: Results ----
         self.results_progress = ft.Ref[ft.ProgressBar]()
@@ -73,8 +80,8 @@ class OllamaClassifierApp:
         self.data_file: str | None = None
         self.data_df: Any = None  # Polars DataFrame
         self.schema_file: str | None = None
-        self.schema_df: Any = None  # Polars DataFrame for labels from file
-        self.labels: dict[str, str] = {}  # label_name -> description (or empty str)
+        self.schema_df: Any = None
+        self.labels: dict[str, str] = {}
         self.results: list[dict] = []
         self._classifying = False
 
@@ -91,14 +98,13 @@ class OllamaClassifierApp:
             self.page.window.destroy()
             return
 
-        self.page.title = "Ollama Classifier GUI"
+        self.page.title = "LLM Classifier GUI"
         self.page.theme_mode = self._theme_mode_from_config()
         self.page.window.width = 1200
         self.page.window.height = 800
         self.page.padding = 10
 
         self._build_ui()
-        await self._init_ollama_client()
         await self.page.update_async()
 
     # ==================================================================
@@ -166,27 +172,53 @@ class OllamaClassifierApp:
     # ---------- Settings view ----------
 
     def _build_settings_view(self):
-        host = self.config.get("host", "http://localhost:11434")
+        backend = self.config.get("backend_type", "ollama")
+        endpoint = self.config.get("endpoint", DEFAULT_ENDPOINTS[backend])
         model = self.config.get("model", "llama3.2")
         theme = self.config.get("theme", "system")
+        batch_size = self.config.get("batch_size", "1")
 
         self.settings_view.current.controls = [
             ft.Card(
                 content=ft.Container(
                     content=ft.Column([
-                        ft.Text("Ollama Connection", size=20, weight=ft.FontWeight.BOLD),
+                        ft.Text("Inference Backend", size=20, weight=ft.FontWeight.BOLD),
                         ft.Divider(),
-                        ft.TextField(ref=self.host_field, label="Ollama Host URL", value=host, width=500),
+                        ft.Dropdown(
+                            ref=self.backend_dropdown,
+                            label="Backend Type",
+                            value=backend,
+                            width=400,
+                            options=[ft.dropdown.Option(b) for b in BACKEND_TYPES],
+                            on_change=self._on_backend_type_change,
+                        ),
+                        ft.TextField(
+                            ref=self.endpoint_field,
+                            label="Endpoint URL",
+                            value=endpoint,
+                            width=500,
+                            helper_text="Base URL of the inference server",
+                        ),
+                        ft.TextField(
+                            ref=self.model_field,
+                            label="Model",
+                            value=model,
+                            width=400,
+                            helper_text="Model identifier (e.g. llama3.2, meta-llama/Llama-3.2-3B-Instruct)",
+                        ),
                         ft.Row([
-                            ft.Dropdown(ref=self.model_dropdown, label="Model", value=model, width=400,
-                                        options=[ft.dropdown.Option(model)]),
                             ft.ElevatedButton("Test Connection", ref=self.test_connection_btn,
                                               icon=ft.Icons.REFRESH, on_click=self._on_test_connection),
+                            ft.Text("", ref=self.connection_status, color=ft.Colors.GREY),
                         ]),
-                        ft.Text("", ref=self.connection_status, color=ft.Colors.GREY),
-                        ft.TextField(ref=self.api_key_field, label="API Key (optional)", password=True,
-                                     can_reveal_password=True, width=500,
-                                     helper_text="Only needed for cloud Ollama instances"),
+                        ft.TextField(
+                            ref=self.api_key_field,
+                            label="API Key (optional)",
+                            password=True,
+                            can_reveal_password=True,
+                            width=500,
+                            helper_text="Only needed for authenticated remote servers",
+                        ),
                     ], spacing=10),
                     padding=20,
                 )
@@ -235,8 +267,8 @@ class OllamaClassifierApp:
                                               on_click=self._on_select_data_file),
                             ft.Text("No file selected", ref=self.data_file_path_text, color=ft.Colors.GREY),
                         ]),
-                        ft.Dropdown(ref=self.sheet_dropdown, label="Sheet (Excel only)", width=400, visible=False,
-                                    on_change=self._on_sheet_change),
+                        ft.Dropdown(ref=self.data_sheet_dropdown, label="Sheet (Excel only)", width=400, visible=False,
+                                    on_change=self._on_data_sheet_change),
                         ft.Dropdown(ref=self.text_column_dropdown, label="Text Column", width=400, visible=False),
                     ], spacing=10),
                     padding=20,
@@ -284,6 +316,8 @@ class OllamaClassifierApp:
                                             ft.Text("No file selected", ref=self.schema_file_path_text,
                                                     color=ft.Colors.GREY),
                                         ]),
+                                        ft.Dropdown(ref=self.schema_sheet_dropdown, label="Sheet (Excel only)",
+                                                    width=400, visible=False, on_change=self._on_schema_sheet_change),
                                         ft.Dropdown(ref=self.label_column_dropdown, label="Label Column",
                                                     width=400, visible=False),
                                         ft.Dropdown(ref=self.description_column_dropdown,
@@ -305,20 +339,24 @@ class OllamaClassifierApp:
                         ft.TextField(ref=self.system_prompt_field, label="Custom System Prompt (optional)",
                                      multiline=True, min_lines=3, max_lines=6,
                                      helper_text="Override the default classification prompt"),
-                        ft.Text("Classification Method:"),
+                        ft.Text("Classification Method:", weight=ft.FontWeight.W_500),
                         ft.RadioGroup(
                             ref=self.classify_method_radio,
                             content=ft.Column([
                                 ft.Radio(value="classify", label="Classify (single call, prediction + confidence)"),
-                                ft.Radio(value="score", label="Score (multi-call, all probabilities)"),
+                                ft.Radio(value="score", label="Score (multi-call, all probabilities via softmax)"),
                             ]),
                             value="classify",
-                            on_change=self._on_classify_method_change,
                         ),
-                        ft.Row([
-                            ft.Text("Save all label probabilities"),
-                            ft.Switch(ref=self.save_all_probs_switch, value=False, disabled=True),
-                        ]),
+                        ft.Text("Output Format:", weight=ft.FontWeight.W_500, padding=ft.padding.only(top=10)),
+                        ft.RadioGroup(
+                            ref=self.output_format_radio,
+                            content=ft.Column([
+                                ft.Radio(value="top_label", label="Top label only (prediction + confidence)"),
+                                ft.Radio(value="all_labels", label="All labels (each label becomes a column with its probability)"),
+                            ]),
+                            value="top_label",
+                        ),
                     ], spacing=10),
                     padding=20,
                 )
@@ -336,9 +374,18 @@ class OllamaClassifierApp:
                         ft.Divider(),
                         ft.ProgressBar(ref=self.results_progress, visible=False, width=500),
                         ft.Text("", ref=self.results_status, color=ft.Colors.GREY),
-                        ft.DataTable(ref=self.results_table, columns=[], rows=[],
-                                     border=ft.border.all(1, ft.Colors.OUTLINE),
-                                     horizontal_lines=ft.border.BorderSide(1, ft.Colors.OUTLINE)),
+                        ft.Text("Preview (first 20 rows):", size=14, italic=True),
+                        ft.Container(
+                            content=ft.Column(
+                                controls=[ft.DataTable(
+                                    ref=self.results_table, columns=[], rows=[],
+                                    border=ft.border.all(1, ft.Colors.OUTLINE),
+                                    horizontal_lines=ft.border.BorderSide(1, ft.Colors.OUTLINE),
+                                )],
+                                scroll=ft.ScrollMode.AUTO,
+                            ),
+                            height=350,
+                        ),
                     ], spacing=10),
                     padding=20,
                 )
@@ -352,42 +399,102 @@ class OllamaClassifierApp:
         ]
 
     # ==================================================================
-    # Ollama client
+    # Backend / classifier initialisation
     # ==================================================================
 
-    async def _init_ollama_client(self):
-        host = self.config.get("host", "http://localhost:11434")
-        api_key = await self.secure_storage.get("api_key")
+    async def _get_classifier(self):
+        """Return the appropriate classifier based on current settings."""
+        backend_type = self.config.get("backend_type", "ollama")
+        endpoint = self.config.get("endpoint", DEFAULT_ENDPOINTS[backend_type])
+        model = self.config.get("model", "llama3.2")
+        api_key = await self.secure_storage.get("api_key") or ""
+
+        if backend_type == "ollama":
+            return await self._get_ollama_classifier(endpoint, model, api_key)
+        else:
+            return self._get_llm_classifier(backend_type, endpoint, model, api_key)
+
+    async def _get_ollama_classifier(self, host: str, model: str, api_key: str):
+        """Create / return the Ollama-based classifier."""
+        from ollama import AsyncClient
+        from ollama_classifier import OllamaClassifier
+
         headers: dict[str, str] = {}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        self.client = AsyncClient(host=host, headers=headers)
-        model = self.config.get("model", "llama3.2")
-        self.classifier = OllamaClassifier(self.client, model=model)
+        self._ollama_client = AsyncClient(host=host, headers=headers)
+        self._ollama_classifier = OllamaClassifier(self._ollama_client, model=model)
+        return self._ollama_classifier
+
+    def _get_llm_classifier(self, backend_type: str, endpoint: str, model: str, api_key: str):
+        """Create / return the generic LLMClassifier with the chosen backend."""
+        from ollama_classifier import LLMClassifier
+
+        if backend_type == "vllm":
+            from ollama_classifier.backends import VLLMBackend
+            backend = VLLMBackend(model=model, base_url=endpoint, api_key=api_key or None)
+        elif backend_type == "sglang":
+            from ollama_classifier.backends import SGLangBackend
+            backend = SGLangBackend(model=model, base_url=endpoint, api_key=api_key or None)
+        elif backend_type == "llamacpp":
+            from ollama_classifier.backends import LlamaCppBackend
+            backend = LlamaCppBackend(model=model, base_url=endpoint, api_key=api_key or None)
+        else:
+            raise ValueError(f"Unknown backend type: {backend_type}")
+
+        self._llm_classifier = LLMClassifier(backend)
+        return self._llm_classifier
 
     # ==================================================================
     # Settings handlers
     # ==================================================================
+
+    async def _on_backend_type_change(self, e: ft.ControlEvent):
+        """Update the default endpoint when the backend type changes."""
+        backend = e.control.value
+        default_ep = DEFAULT_ENDPOINTS.get(backend, "")
+        self.endpoint_field.current.value = default_ep
+        await self.page.update_async()
 
     async def _on_test_connection(self, e: ft.ControlEvent):
         self.test_connection_btn.current.disabled = True
         self.connection_status.current.value = "Testing connection..."
         self.connection_status.current.color = ft.Colors.GREY
         await self.page.update_async()
+
+        backend_type = self.backend_dropdown.current.value
+        endpoint = self.endpoint_field.current.value
+        model = self.model_field.current.value
+        api_key = self.api_key_field.current.value or ""
+
         try:
-            host = self.host_field.current.value
-            api_key = self.api_key_field.current.value
-            headers: dict[str, str] = {}
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-            tmp_client = AsyncClient(host=host, headers=headers)
-            models_resp = await tmp_client.list()
-            model_names = sorted(m["name"] for m in models_resp.get("models", []))
-            self.model_dropdown.current.options = [ft.dropdown.Option(n) for n in model_names]
-            if model_names:
-                self.model_dropdown.current.value = model_names[0]
-            self.connection_status.current.value = f"✓ Connected — {len(model_names)} model(s) found."
-            self.connection_status.current.color = ft.Colors.GREEN
+            if backend_type == "ollama":
+                from ollama import AsyncClient
+
+                headers: dict[str, str] = {}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                tmp_client = AsyncClient(host=endpoint, headers=headers)
+                models_resp = await tmp_client.list()
+                model_names = sorted(m["name"] for m in models_resp.get("models", []))
+                if model_names:
+                    self.model_field.current.value = model_names[0]
+                self.connection_status.current.value = f"✓ Connected — {len(model_names)} model(s) found."
+                self.connection_status.current.color = ft.Colors.GREEN
+            else:
+                import httpx
+
+                url = f"{endpoint.rstrip('/')}/models"
+                resp = httpx.get(url, headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+                                timeout=10.0)
+                resp.raise_for_status()
+                data = resp.json()
+                model_list = data.get("data", [])
+                model_names = sorted(m.get("id", m.get("name", "")) for m in model_list)
+                if model_names:
+                    self.model_field.current.value = model_names[0]
+                self.connection_status.current.value = f"✓ Connected — {len(model_names)} model(s) found."
+                self.connection_status.current.color = ft.Colors.GREEN
         except Exception as ex:
             self.connection_status.current.value = f"✗ Error: {ex}"
             self.connection_status.current.color = ft.Colors.RED
@@ -403,9 +510,12 @@ class OllamaClassifierApp:
         await self.page.update_async()
 
     async def _on_save_settings(self, e: ft.ControlEvent):
-        self.config["host"] = self.host_field.current.value
-        self.config["model"] = self.model_dropdown.current.value
+        self.config["backend_type"] = self.backend_dropdown.current.value
+        self.config["endpoint"] = self.endpoint_field.current.value
+        self.config["model"] = self.model_field.current.value
+        self.config["batch_size"] = self.batch_size_field.current.value or "1"
         save_config(self.config)
+
         api_key = self.api_key_field.current.value
         if api_key:
             await self.secure_storage.set("api_key", api_key)
@@ -414,7 +524,7 @@ class OllamaClassifierApp:
                 await self.secure_storage.remove("api_key")
             except Exception:
                 pass
-        await self._init_ollama_client()
+
         await self._show_dialog("Settings Saved", "Your settings have been saved successfully.")
 
     async def _on_create_shortcut(self, e: ft.ControlEvent):
@@ -430,7 +540,7 @@ class OllamaClassifierApp:
             make_shortcut(
                 script="uvx",
                 arguments="ollama-classifier-gui",
-                name="Ollama Classifier GUI",
+                name="LLM Classifier GUI",
                 terminal=False,
                 desktop=True,
                 startmenu=True,
@@ -448,15 +558,15 @@ class OllamaClassifierApp:
         import polars as pl
 
         result = await self._pick_file(
-            allowed_extensions=["csv", "xlsx", "xls", "json"],
-            dialog_title="Select data file",
+            allowed_extensions=["csv", "xlsx", "xls"],
+            dialog_title="Select data file (CSV or Excel)",
         )
         if not result:
             return
         file_path = result
         self.data_file = file_path
         self.data_file_path_text.current.value = file_path
-        self.sheet_dropdown.current.visible = False
+        self.data_sheet_dropdown.current.visible = False
         self.text_column_dropdown.current.visible = False
 
         try:
@@ -467,18 +577,12 @@ class OllamaClassifierApp:
                 wb.close()
                 if not sheet_names:
                     raise ValueError("Excel file has no sheets.")
-                self.sheet_dropdown.current.options = [ft.dropdown.Option(n) for n in sheet_names]
-                self.sheet_dropdown.current.value = sheet_names[0]
-                self.sheet_dropdown.current.visible = True
+                self.data_sheet_dropdown.current.options = [ft.dropdown.Option(n) for n in sheet_names]
+                self.data_sheet_dropdown.current.value = sheet_names[0]
+                self.data_sheet_dropdown.current.visible = True
                 self.data_df = pl.read_excel(file_path, engine="openpyxl", sheet_name=sheet_names[0])
             elif file_path.endswith(".csv"):
                 self.data_df = pl.read_csv(file_path)
-            elif file_path.endswith(".json"):
-                try:
-                    self.data_df = pl.read_json(file_path)
-                except Exception:
-                    # Fallback: try reading raw JSON and normalising
-                    self.data_df = self._try_flatten_json(file_path)
             else:
                 raise ValueError(f"Unsupported file type: {file_path}")
 
@@ -496,10 +600,10 @@ class OllamaClassifierApp:
 
         await self.page.update_async()
 
-    async def _on_sheet_change(self, e: ft.ControlEvent):
+    async def _on_data_sheet_change(self, e: ft.ControlEvent):
         import polars as pl
 
-        sheet_name = self.sheet_dropdown.current.value
+        sheet_name = self.data_sheet_dropdown.current.value
         if not sheet_name or not self.data_file:
             return
         try:
@@ -512,38 +616,6 @@ class OllamaClassifierApp:
             await self._show_dialog("Error Loading Sheet", str(ex))
         await self.page.update_async()
 
-    @staticmethod
-    def _try_flatten_json(file_path: str):
-        """Attempt to flatten a JSON file into a Polars DataFrame."""
-        import polars as pl
-
-        with open(file_path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-
-        # If it's a list of dicts
-        if isinstance(raw, list):
-            # Try to flatten each record
-            flat_records = []
-            for rec in raw:
-                if isinstance(rec, dict):
-                    flat_records.append(pl.DataFrame(rec).unnest(pl.all()))
-                else:
-                    flat_records.append({"value": rec})
-            return pl.concat(flat_records, how="diagonal") if flat_records else pl.DataFrame()
-
-        # If it's a single dict
-        if isinstance(raw, dict):
-            # Check if any value is a nested structure
-            has_nested = any(isinstance(v, (list, dict)) for v in raw.values())
-            if has_nested:
-                raise ValueError(
-                    "JSON contains nested structures that cannot be flattened to a simple table. "
-                    "Please provide a flat JSON (list of objects with primitive values)."
-                )
-            return pl.DataFrame(raw)
-
-        raise ValueError("Unsupported JSON structure. Expected a list of objects or a flat object.")
-
     def _refresh_data_preview(self):
         if self.data_df is None:
             return
@@ -552,7 +624,7 @@ class OllamaClassifierApp:
         self.data_preview_table.current.rows = []
         for row in preview.iter_rows(named=True):
             self.data_preview_table.current.rows.append(
-                ft.DataRow(cells=[ft.DataCell(ft.Text(str(row[c]))) for c in preview.columns])
+                ft.DataRow(cells=[ft.DataCell(ft.Text(str(row[c])[:100])) for c in preview.columns])
             )
 
     # ==================================================================
@@ -577,38 +649,60 @@ class OllamaClassifierApp:
         import polars as pl
 
         result = await self._pick_file(
-            allowed_extensions=["csv", "xlsx", "xls", "json"],
-            dialog_title="Select schema / labels file",
+            allowed_extensions=["csv", "xlsx", "xls"],
+            dialog_title="Select schema / labels file (CSV or Excel)",
         )
         if not result:
             return
         file_path = result
         self.schema_file = file_path
         self.schema_file_path_text.current.value = file_path
+        self.schema_sheet_dropdown.current.visible = False
 
         try:
             if file_path.endswith((".xlsx", ".xls")):
-                self.schema_df = pl.read_excel(file_path, engine="openpyxl")
+                import openpyxl
+                wb = openpyxl.load_workbook(file_path, read_only=True)
+                sheet_names = wb.sheetnames
+                wb.close()
+                self.schema_sheet_dropdown.current.options = [ft.dropdown.Option(n) for n in sheet_names]
+                self.schema_sheet_dropdown.current.value = sheet_names[0]
+                self.schema_sheet_dropdown.current.visible = True
+                self.schema_df = pl.read_excel(file_path, engine="openpyxl", sheet_name=sheet_names[0])
             elif file_path.endswith(".csv"):
                 self.schema_df = pl.read_csv(file_path)
-            elif file_path.endswith(".json"):
-                try:
-                    self.schema_df = pl.read_json(file_path)
-                except Exception:
-                    self.schema_df = self._try_flatten_json(file_path)
             else:
                 raise ValueError(f"Unsupported file type: {file_path}")
 
             cols = self.schema_df.columns
             self.label_column_dropdown.current.options = [ft.dropdown.Option(c) for c in cols]
-            self.description_column_dropdown.current.options = [ft.dropdown.Option(c) for c in cols]
+            self.description_column_dropdown.current.options = [ft.dropdown.Option("-- None --")] + [ft.dropdown.Option(c) for c in cols]
             self.label_column_dropdown.current.value = cols[0]
+            self.description_column_dropdown.current.value = "-- None --"
             self.label_column_dropdown.current.visible = True
             self.description_column_dropdown.current.visible = True
             self._refresh_schema_preview()
 
         except Exception as ex:
             await self._show_dialog("Error Loading Schema File", str(ex))
+        await self.page.update_async()
+
+    async def _on_schema_sheet_change(self, e: ft.ControlEvent):
+        import polars as pl
+
+        sheet_name = self.schema_sheet_dropdown.current.value
+        if not sheet_name or not self.schema_file:
+            return
+        try:
+            self.schema_df = pl.read_excel(self.schema_file, engine="openpyxl", sheet_name=sheet_name)
+            cols = self.schema_df.columns
+            self.label_column_dropdown.current.options = [ft.dropdown.Option(c) for c in cols]
+            self.description_column_dropdown.current.options = [ft.dropdown.Option("-- None --")] + [ft.dropdown.Option(c) for c in cols]
+            self.label_column_dropdown.current.value = cols[0]
+            self.description_column_dropdown.current.value = "-- None --"
+            self._refresh_schema_preview()
+        except Exception as ex:
+            await self._show_dialog("Error Loading Sheet", str(ex))
         await self.page.update_async()
 
     def _refresh_schema_preview(self):
@@ -620,18 +714,16 @@ class OllamaClassifierApp:
         lines = []
         for row in preview_rows.iter_rows(named=True):
             label = str(row.get(label_col, ""))
-            desc = str(row.get(desc_col, "")) if desc_col and desc_col != label_col else ""
+            desc = str(row.get(desc_col, "")) if desc_col and desc_col != "-- None --" and desc_col != label_col else ""
             lines.append(f"• {label}" + (f" — {desc}" if desc else ""))
         self.schema_preview_text.current.value = "\n".join(lines) if lines else "No labels found."
 
     def _collect_labels(self) -> dict[str, str]:
         """Collect labels from either manual input or schema file."""
-        import polars as pl
-
+        # Determine active tab (Tabs is inside the first Card)
         active_tab = self.schema_view.current.controls[0].content.controls[2].selected_index  # type: ignore[union-attr]
 
         if active_tab == 0:
-            # Manual labels
             labels: dict[str, str] = {}
             for row_ctrl in self.manual_labels_list.current.controls:
                 fields = [c for c in row_ctrl.controls if isinstance(c, ft.TextField)]
@@ -641,7 +733,6 @@ class OllamaClassifierApp:
                     labels[label_name] = desc
             return labels
         else:
-            # From file
             if self.schema_df is None:
                 return {}
             label_col = self.label_column_dropdown.current.value
@@ -652,7 +743,7 @@ class OllamaClassifierApp:
                 if not name:
                     continue
                 desc = ""
-                if desc_col and desc_col != label_col:
+                if desc_col and desc_col != "-- None --" and desc_col != label_col:
                     desc = str(row.get(desc_col, "")).strip()
                 labels[name] = desc
             return labels
@@ -660,13 +751,6 @@ class OllamaClassifierApp:
     # ==================================================================
     # Classification
     # ==================================================================
-
-    async def _on_classify_method_change(self, e: ft.ControlEvent):
-        method = e.control.value
-        self.save_all_probs_switch.current.disabled = (method != "score")
-        if method != "score":
-            self.save_all_probs_switch.current.value = False
-        await self.page.update_async()
 
     async def _on_run_classification(self, e: ft.ControlEvent):
         if self._classifying:
@@ -687,17 +771,25 @@ class OllamaClassifierApp:
             await self._show_dialog("No Labels", "Please define at least one classification label (Schema tab).")
             return
 
-        # Build choices: if all descriptions are empty, use list form
+        # Build choices
         all_empty_desc = all(d == "" for d in labels.values())
         choices = list(labels.keys()) if all_empty_desc else labels
 
         method = self.classify_method_radio.current.value
-        save_all = self.save_all_probs_switch.current.value and method == "score"
+        output_format = self.output_format_radio.current.value
         system_prompt = self.system_prompt_field.current.value or None
 
-        # Reinitialise classifier with current model
-        if self.classifier is None:
-            await self._show_dialog("Not Connected", "Please configure and test the Ollama connection in Settings.")
+        # Parse batch size
+        try:
+            batch_size = max(1, int(self.batch_size_field.current.value or "1"))
+        except ValueError:
+            batch_size = 1
+
+        # Initialise classifier
+        try:
+            classifier = await self._get_classifier()
+        except Exception as ex:
+            await self._show_dialog("Connection Error", f"Could not initialise classifier:\n{ex}")
             return
 
         # Extract texts
@@ -712,61 +804,56 @@ class OllamaClassifierApp:
         self.results_status.current.value = f"Starting classification of {len(texts)} item(s)…"
         self.results = []
         self.results_table.current.rows = []
+        self.results_table.current.columns = []
         await self.page.update_async()
 
-        classify_fn = self.classifier.ascore if method == "score" else self.classifier.aclassify
-
         try:
-            for i, text in enumerate(texts):
-                text_str = str(text)
-                self.results_status.current.value = f"Classifying {i + 1}/{len(texts)}…"
-                self.results_progress.current.value = (i + 1) / len(texts)
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                self.results_status.current.value = f"Classifying {min(i + batch_size, len(texts))}/{len(texts)}…"
+                self.results_progress.current.value = min(i + batch_size, len(texts)) / len(texts)
                 await self.page.update_async()
 
-                try:
-                    result = await classify_fn(
-                        text=text_str,
-                        choices=choices,
-                        system_prompt=system_prompt,
-                    )
-                    row_dict: dict[str, Any] = {
-                        "text": text_str,
-                        "prediction": result.prediction,
-                        "confidence": result.confidence,
-                    }
-                    if save_all:
-                        row_dict["probabilities"] = result.probabilities
-                    self.results.append(row_dict)
-
-                    # Add row to table
-                    cells = [
-                        ft.DataCell(ft.Text(text_str[:80] + ("…" if len(text_str) > 80 else ""))),
-                        ft.DataCell(ft.Text(result.prediction)),
-                        ft.DataCell(ft.Text(f"{result.confidence:.2%}")),
-                    ]
-                    self.results_table.current.rows.append(ft.DataRow(cells=cells))
-
-                except Exception as item_ex:
-                    self.results.append({
-                        "text": text_str,
-                        "prediction": f"ERROR: {item_ex}",
-                        "confidence": 0.0,
-                    })
-                    self.results_table.current.rows.append(
-                        ft.DataRow(cells=[
-                            ft.DataCell(ft.Text(text_str[:80])),
-                            ft.DataCell(ft.Text(f"ERROR", color=ft.Colors.RED)),
-                            ft.DataCell(ft.Text("0.00%")),
-                        ])
-                    )
-
-                # Update table header columns on first successful row
-                if i == 0:
-                    self.results_table.current.columns = [
-                        ft.DataColumn(ft.Text("Text")),
-                        ft.DataColumn(ft.Text("Prediction")),
-                        ft.DataColumn(ft.Text("Confidence")),
-                    ]
+                if batch_size == 1 and method == "score":
+                    # Single-item scoring — use per-item async call for progress
+                    for text in batch:
+                        text_str = str(text)
+                        try:
+                            if method == "score":
+                                result = await classifier.ascore(
+                                    text=text_str, choices=choices, system_prompt=system_prompt,
+                                )
+                            else:
+                                result = await classifier.aclassify(
+                                    text=text_str, choices=choices, system_prompt=system_prompt,
+                                )
+                            row_dict = self._result_to_dict(result, text_str, output_format)
+                            self.results.append(row_dict)
+                            self._add_result_row(row_dict, output_format, i == 0 and len(self.results) == 1)
+                        except Exception as item_ex:
+                            row_dict = {"text": text_str, "prediction": f"ERROR: {item_ex}", "confidence": 0.0}
+                            self.results.append(row_dict)
+                            self._add_error_row(text_str, i == 0 and len(self.results) == 1)
+                else:
+                    # Batch classify or batch generate
+                    try:
+                        if method == "score":
+                            results = await classifier.abatch_score(
+                                texts=[str(t) for t in batch], choices=choices, system_prompt=system_prompt,
+                            )
+                        else:
+                            results = await classifier.abatch_classify(
+                                texts=[str(t) for t in batch], choices=choices, system_prompt=system_prompt,
+                            )
+                        for text_str, result in zip(batch, results):
+                            row_dict = self._result_to_dict(result, str(text_str), output_format)
+                            self.results.append(row_dict)
+                            self._add_result_row(row_dict, output_format, i == 0 and len(self.results) == 1)
+                    except Exception as batch_ex:
+                        for text in batch:
+                            text_str = str(text)
+                            self.results.append({"text": text_str, "prediction": f"ERROR: {batch_ex}", "confidence": 0.0})
+                            self._add_error_row(text_str, i == 0 and len(self.results) == 1)
 
                 await self.page.update_async()
 
@@ -783,6 +870,49 @@ class OllamaClassifierApp:
             self.results_progress.current.visible = False
             await self.page.update_async()
 
+    def _result_to_dict(self, result, text_str: str, output_format: str) -> dict[str, Any]:
+        """Convert a ClassificationResult to a dict based on output format."""
+        if output_format == "all_labels":
+            row_dict: dict[str, Any] = {"text": text_str}
+            for label, prob in result.probabilities.items():
+                row_dict[label] = prob
+            return row_dict
+        else:
+            return {
+                "text": text_str,
+                "prediction": result.prediction,
+                "confidence": result.confidence,
+            }
+
+    def _add_result_row(self, row_dict: dict, output_format: str, is_first: bool):
+        """Add a DataRow to the results table."""
+        if is_first:
+            self.results_table.current.columns = [ft.DataColumn(ft.Text(k)) for k in row_dict.keys()]
+        cells = []
+        for k, v in row_dict.items():
+            if isinstance(v, float):
+                cells.append(ft.DataCell(ft.Text(f"{v:.2%}")))
+            else:
+                text = str(v)
+                cells.append(ft.DataCell(ft.Text(text[:80] + ("…" if len(text) > 80 else ""))))
+        self.results_table.current.rows.append(ft.DataRow(cells=cells))
+
+    def _add_error_row(self, text_str: str, is_first: bool):
+        """Add an error DataRow."""
+        if is_first:
+            self.results_table.current.columns = [
+                ft.DataColumn(ft.Text("text")),
+                ft.DataColumn(ft.Text("prediction")),
+                ft.DataColumn(ft.Text("confidence")),
+            ]
+        self.results_table.current.rows.append(
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Text(text_str[:80])),
+                ft.DataCell(ft.Text("ERROR", color=ft.Colors.RED)),
+                ft.DataCell(ft.Text("0.00%")),
+            ])
+        )
+
     # ==================================================================
     # Save results
     # ==================================================================
@@ -792,38 +922,68 @@ class OllamaClassifierApp:
             await self._show_dialog("No Results", "Nothing to save — run classification first.")
             return
 
-        save_dir = await self._pick_save_dir(dialog_title="Select save location")
-        if not save_dir:
+        # Pick save location
+        save_path = await self._pick_save_file(
+            allowed_extensions=["xlsx"],
+            dialog_title="Save results as Excel",
+            suggested_name="classification_results.xlsx",
+        )
+        if not save_path:
             return
-
-        base_path = Path(save_dir) / "classification_results"
 
         try:
             import polars as pl
 
             rows = []
             for r in self.results:
-                row: dict[str, Any] = {
-                    "text": r["text"],
-                    "prediction": r["prediction"],
-                    "confidence": r["confidence"],
-                }
-                if "probabilities" in r and isinstance(r["probabilities"], dict):
-                    for k, v in r["probabilities"].items():
-                        row[f"prob_{k}"] = v
+                row: dict[str, Any] = {}
+                for k, v in r.items():
+                    if k == "text":
+                        row[k] = v
+                    elif k == "prediction":
+                        row[k] = v
+                    elif k == "confidence":
+                        row[k] = v
+                    else:
+                        # Label probability columns
+                        row[k] = v
                 rows.append(row)
 
-            df = pl.DataFrame(rows)
-            csv_path = str(base_path) + ".csv"
-            json_path = str(base_path) + ".json"
+            results_df = pl.DataFrame(rows)
 
-            df.write_csv(csv_path)
-            df.write_json(json_path)
+            # Merge with original data
+            text_col = self.text_column_dropdown.current.value
+            if text_col and self.data_df is not None:
+                # Get original columns and add results columns
+                output_format = self.output_format_radio.current.value
+                if output_format == "all_labels":
+                    extra_cols = [c for c in results_df.columns if c != "text"]
+                else:
+                    extra_cols = ["prediction", "confidence"]
 
-            await self._show_dialog(
-                "Results Saved",
-                f"CSV: {csv_path}\nJSON: {json_path}",
-            )
+                # Build output: original data + results columns aligned by row index
+                original_cols = self.data_df.columns
+                output_data: dict[str, list] = {}
+                for col in original_cols:
+                    output_data[col] = self.data_df[col].to_list()
+
+                n_texts = len(self.data_df)
+                n_results = len(self.results)
+                for col in extra_cols:
+                    col_values = []
+                    for idx in range(n_texts):
+                        if idx < n_results and col in self.results[idx]:
+                            col_values.append(self.results[idx][col])
+                        else:
+                            col_values.append(None)
+                    output_data[col] = col_values
+
+                output_df = pl.DataFrame(output_data)
+            else:
+                output_df = results_df
+
+            output_df.write_excel(save_path, engine="openpyxl")
+            await self._show_dialog("Results Saved", f"Results saved to:\n{save_path}")
         except Exception as ex:
             await self._show_dialog("Error Saving Results", str(ex))
 
@@ -834,27 +994,25 @@ class OllamaClassifierApp:
     async def _pick_file(self, allowed_extensions: list[str] | None = None,
                          dialog_title: str = "Select file") -> str | None:
         fp = ft.FilePicker()
-        self.page.overlay.append(fp)
-        await self.page.update_async()
         result = await fp.pick_file(
             file_type=ft.FilePickerFileType.CUSTOM,
             allowed_extensions=allowed_extensions or [],
             dialog_title=dialog_title,
         )
-        # Clean up
-        self.page.overlay.remove(fp)
-        await self.page.update_async()
         if result and result.files:
             return result.files[0].path
         return None
 
-    async def _pick_save_dir(self, dialog_title: str = "Select folder") -> str | None:
+    async def _pick_save_file(self, allowed_extensions: list[str] | None = None,
+                              dialog_title: str = "Save file",
+                              suggested_name: str = "results.xlsx") -> str | None:
         fp = ft.FilePicker()
-        self.page.overlay.append(fp)
-        await self.page.update_async()
-        result = await fp.get_directory_path(dialog_title=dialog_title)
-        self.page.overlay.remove(fp)
-        await self.page.update_async()
+        result = await fp.save_file(
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=allowed_extensions or [],
+            dialog_title=dialog_title,
+            file_name=suggested_name,
+        )
         return result
 
     async def _show_dialog(self, title: str, message: str):

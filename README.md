@@ -1,28 +1,36 @@
-# Ollama Classifier GUI
+# LLM Classifier GUI
 
-A desktop GUI application for text classification using [Ollama](https://ollama.com/) and [ollama-classifier](https://pypi.org/project/ollama-classifier/).
+A desktop GUI application for text classification using LLMs. Supports **multiple inference backends**: Ollama, vLLM, SGLang, and llama.cpp.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+Built with [Flet](https://flet.dev/) and powered by [ollama-classifier](https://github.com/paluigi/ollama-classifier).
+
 ## Features
 
-- **Load data** from CSV, Excel, or JSON files
-- **Flexible classification schema**: define labels manually or load from a file
+- **Multiple backends**: Ollama, vLLM, SGLang, llama.cpp (local or remote)
+- **Load data** from CSV or Excel files
+- **Flexible classification schema**: define labels manually or load from a CSV/Excel file
 - **Two classification methods**:
   - *Classify*: single-call prediction with confidence score
   - *Score*: multi-call evaluation with softmax probabilities for all labels
-- **Model selection**: connect to local or cloud Ollama instances, browse available models
+- **Output format options**:
+  - *Top label only*: prediction + confidence
+  - *All labels*: each label becomes a column with its probability
+- **Batch size control**: process multiple texts concurrently for speed
+- **Save results** to Excel (merged with original data)
 - **Dark/Light mode** toggle
-- **Save results** to CSV and JSON (with optional per-label probabilities)
-- **Desktop shortcuts** via `pyshortcuts` (requires `uv`)
 - **Secure storage** for API keys
 
 ## Prerequisites
 
 1. **Python 3.11+**
-2. **[Ollama](https://ollama.com/download)** installed and running
-3. At least one model pulled (e.g., `ollama pull llama3.2`)
+2. At least one inference backend:
+   - [Ollama](https://ollama.com/download) (local)
+   - [vLLM](https://docs.vllm.ai/) server
+   - [SGLang](https://sglang.ai/) server
+   - [llama.cpp server](https://github.com/ggerganov/llama.cpp/tree/master/examples/server)
 
 ### Linux system dependencies
 
@@ -45,14 +53,34 @@ ollama-classifier-gui
 
 ## Usage
 
-1. **Settings tab**: Configure your Ollama host URL, select a model, and optionally set an API key. Click *Test Connection* to verify and browse available models.
-2. **Data Input tab**: Load a CSV, Excel, or JSON file containing the text you want to classify. Select the column that contains the text.
-3. **Schema tab**: Define your classification labels — either manually (label name + optional description) or by loading a labels file. Choose the classification method.
-4. **Results tab**: Click *Run Classification* to start. Monitor progress, then save results to CSV/JSON.
+### 1. Settings tab
+Configure your inference backend:
+- Select the **backend type** (Ollama, vLLM, SGLang, llama.cpp)
+- Set the **endpoint URL** (auto-fills with defaults)
+- Enter the **model name** (or use "Test Connection" to auto-detect available models)
+- Optionally set an **API key** for authenticated remote servers
+- Toggle **dark/light mode**
+- Click **Save Settings**
 
-## Creating a Desktop Shortcut
+### 2. Data Input tab
+- Click **Select File** to load a CSV or Excel file
+- For Excel files, select the **sheet** from the dropdown
+- Select the **text column** that contains the text to classify
 
-The app includes a button in the Settings tab to create desktop and start menu shortcuts. This requires [uv](https://docs.astral.sh/uv/) to be installed. The shortcut runs `uvx ollama-classifier-gui`.
+### 3. Schema tab
+Define your classification labels:
+- **Manual Labels**: click "Add Label" to add labels with optional descriptions
+- **Load from File**: select a CSV/Excel file containing labels (and optionally descriptions)
+
+Then choose:
+- **Classification Method**: Classify (fast) or Score (accurate probabilities)
+- **Output Format**: Top label only or All labels (each as a column)
+- Optionally override the **system prompt**
+
+### 4. Results tab
+- Click **Run Classification** to start
+- Monitor progress in real-time
+- Click **Save Results** to export to Excel (original data + classification columns)
 
 ## Configuration
 
@@ -65,6 +93,15 @@ Settings are stored in a JSON config file:
 | Windows | `%APPDATA%\ollama-classifier-gui\config.json` |
 
 API keys are stored separately using the OS native secure storage (Keychain, Credential Manager, libsecret).
+
+## Default Endpoints
+
+| Backend | Default URL |
+|---|---|
+| Ollama | `http://localhost:11434` |
+| vLLM | `http://localhost:8000/v1` |
+| SGLang | `http://localhost:30000/v1` |
+| llama.cpp | `http://localhost:8080/v1` |
 
 ## License
 
