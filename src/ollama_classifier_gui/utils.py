@@ -47,7 +47,9 @@ def _linux_missing_requirements() -> List[str]:
         missing.append("zenity (install with: sudo apt install zenity)")
     libsecret = shutil.which("libsecret-1.so") or shutil.which("libsecret-1.so.0")
     if libsecret is None:
-        missing.append("libsecret-1-0 (install with: sudo apt install libsecret-1-0)")
+        import ctypes.util
+        if not ctypes.util.find_library("secret-1"):
+            missing.append("libsecret-1-0 (install with: sudo apt install libsecret-1-0)")
     keyring_candidates = [
         "gnome-keyring-daemon",
         "kwalletmanager5",
@@ -139,9 +141,7 @@ async def show_missing_dependencies(page, missing: List[str]):
         title=ft.Text("Missing System Dependencies"),
         content=ft.Text(msg, selectable=True),
         actions=[
-            ft.TextButton("OK", on_click=lambda e: page.close(dlg)),
+            ft.TextButton("OK", on_click=lambda e: page.pop_dialog()),
         ],
     )
-    page.overlay.append(dlg)
-    await page.update_async()
-    await dlg.wait_dismiss()
+    page.show_dialog(dlg)

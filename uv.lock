@@ -281,24 +281,29 @@ wheels = [
 
 [[package]]
 name = "ollama-classifier"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ollama" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/0b/9483b51991c9423c05a1110cf94ae1b0fd6e474eb9d04f691c2671003c7c/ollama_classifier-0.2.0.tar.gz", hash = "sha256:4baaebd98a1a3e65199345f6a1614a3ad1eb6c3ff96fbf87aac8a96deffdc6ed", size = 6230, upload-time = "2026-03-26T19:57:12.599Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/a3/e25d4505aa11691faeb69773ce2b587ad7b4f7d6617dd848037d8fd38508/ollama_classifier-0.3.0.tar.gz", hash = "sha256:1f7c5ebc1038a601161a2ec1326c62267481b9ad9dbb72d0f1e21f4095366bb1", size = 11253, upload-time = "2026-04-27T08:52:40.757Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/cf/f9e61562d06e611a73b7355b2815f67bdb7d08cc6097582947f609f002ad/ollama_classifier-0.2.0-py3-none-any.whl", hash = "sha256:155a8827e42ca06fb7415d3e409fbcae15a93a57260dc8c7e641f72eb66541ad", size = 8473, upload-time = "2026-03-26T19:57:11.436Z" },
+    { url = "https://files.pythonhosted.org/packages/32/b4/dcea9e38b97307f6ddbf8cce06b49afcdf9499df80d1038a62d6d8cc7ac3/ollama_classifier-0.3.0-py3-none-any.whl", hash = "sha256:42add244dba464fa59e9c81f6977fa5c80cc688fbd0b9e5b597d029363bf59b5", size = 18762, upload-time = "2026-04-27T08:52:39.318Z" },
+]
+
+[package.optional-dependencies]
+backends = [
+    { name = "httpx" },
 ]
 
 [[package]]
 name = "ollama-classifier-gui"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "flet" },
     { name = "flet-secure-storage" },
-    { name = "ollama-classifier" },
+    { name = "ollama-classifier", extra = ["backends"] },
     { name = "openpyxl" },
     { name = "polars" },
     { name = "pyshortcuts" },
@@ -308,7 +313,7 @@ dependencies = [
 requires-dist = [
     { name = "flet", specifier = ">=0.84.0" },
     { name = "flet-secure-storage", specifier = ">=0.84.0" },
-    { name = "ollama-classifier", specifier = ">=0.2.0" },
+    { name = "ollama-classifier", extras = ["backends"], specifier = ">=0.3.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "polars", specifier = ">=1.40.0" },
     { name = "pyshortcuts", specifier = ">=1.9.7" },

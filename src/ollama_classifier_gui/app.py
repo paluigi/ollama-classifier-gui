@@ -62,6 +62,7 @@ class OllamaClassifierApp:
         self.system_prompt_field = ft.Ref[ft.TextField]()
         self.classify_method_radio = ft.Ref[ft.RadioGroup]()
         self.output_format_radio = ft.Ref[ft.RadioGroup]()
+        self.schema_tabs = ft.Ref[ft.Tabs]()
 
         # ---- UI refs: Results ----
         self.results_progress = ft.Ref[ft.ProgressBar]()
@@ -95,7 +96,7 @@ class OllamaClassifierApp:
         if missing:
             await show_missing_dependencies(self.page, missing)
             await asyncio.sleep(1)
-            self.page.window.destroy()
+            await self.page.window.destroy()
             return
 
         self.page.title = "LLM Classifier GUI"
@@ -105,7 +106,7 @@ class OllamaClassifierApp:
         self.page.padding = 10
 
         self._build_ui()
-        await self.page.update_async()
+        self.page.update()
 
     # ==================================================================
     # Theme helpers
@@ -190,21 +191,21 @@ class OllamaClassifierApp:
                             value=backend,
                             width=400,
                             options=[ft.dropdown.Option(b) for b in BACKEND_TYPES],
-                            on_change=self._on_backend_type_change,
+                            on_select=self._on_backend_type_change,
                         ),
                         ft.TextField(
                             ref=self.endpoint_field,
                             label="Endpoint URL",
                             value=endpoint,
                             width=500,
-                            helper_text="Base URL of the inference server",
+                            helper="Base URL of the inference server",
                         ),
                         ft.TextField(
                             ref=self.model_field,
                             label="Model",
                             value=model,
                             width=400,
-                            helper_text="Model identifier (e.g. llama3.2, meta-llama/Llama-3.2-3B-Instruct)",
+                            helper="Model identifier (e.g. llama3.2, meta-llama/Llama-3.2-3B-Instruct)",
                         ),
                         ft.Row([
                             ft.ElevatedButton("Test Connection", ref=self.test_connection_btn,
@@ -217,7 +218,14 @@ class OllamaClassifierApp:
                             password=True,
                             can_reveal_password=True,
                             width=500,
-                            helper_text="Only needed for authenticated remote servers",
+                            helper="Only needed for authenticated remote servers",
+                        ),
+                        ft.TextField(
+                            ref=self.batch_size_field,
+                            label="Batch Size",
+                            value=batch_size,
+                            width=200,
+                            helper="Number of items per batch (default: 1)",
                         ),
                     ], spacing=10),
                     padding=20,
@@ -268,7 +276,7 @@ class OllamaClassifierApp:
                             ft.Text("No file selected", ref=self.data_file_path_text, color=ft.Colors.GREY),
                         ]),
                         ft.Dropdown(ref=self.data_sheet_dropdown, label="Sheet (Excel only)", width=400, visible=False,
-                                    on_change=self._on_data_sheet_change),
+                                    on_select=self._on_data_sheet_change),
                         ft.Dropdown(ref=self.text_column_dropdown, label="Text Column", width=400, visible=False),
                     ], spacing=10),
                     padding=20,
@@ -279,7 +287,9 @@ class OllamaClassifierApp:
                     content=ft.Column([
                         ft.Text("Data Preview (first 5 rows)", size=18, weight=ft.FontWeight.BOLD),
                         ft.Divider(),
-                        ft.DataTable(ref=self.data_preview_table, columns=[], rows=[],
+                        ft.DataTable(ref=self.data_preview_table,
+                                     columns=[ft.DataColumn(ft.Text(""))],
+                                     rows=[],
                                      border=ft.border.all(1, ft.Colors.OUTLINE),
                                      horizontal_lines=ft.border.BorderSide(1, ft.Colors.OUTLINE)),
                     ], spacing=10),
@@ -298,18 +308,21 @@ class OllamaClassifierApp:
                         ft.Text("Classification Labels", size=20, weight=ft.FontWeight.BOLD),
                         ft.Divider(),
                         ft.Tabs(
-                            tabs=[
-                                ft.Tab(
-                                    text="Manual Labels",
-                                    content=ft.Column([
+                            ref=self.schema_tabs,
+                            selected_index=0,
+                            length=2,
+                            content=ft.Column([
+                                ft.TabBar(tabs=[
+                                    ft.Tab(label="Manual Labels"),
+                                    ft.Tab(label="Load from File"),
+                                ]),
+                                ft.TabBarView(controls=[
+                                    ft.Column([
                                         ft.ElevatedButton("Add Label", icon=ft.Icons.ADD,
                                                           on_click=self._on_add_label),
                                         ft.Column(ref=self.manual_labels_list, spacing=5),
                                     ], spacing=10),
-                                ),
-                                ft.Tab(
-                                    text="Load from File",
-                                    content=ft.Column([
+                                    ft.Column([
                                         ft.Row([
                                             ft.ElevatedButton("Select File", icon=ft.Icons.UPLOAD_FILE,
                                                               on_click=self._on_select_schema_file),
@@ -317,15 +330,15 @@ class OllamaClassifierApp:
                                                     color=ft.Colors.GREY),
                                         ]),
                                         ft.Dropdown(ref=self.schema_sheet_dropdown, label="Sheet (Excel only)",
-                                                    width=400, visible=False, on_change=self._on_schema_sheet_change),
+                                                    width=400, visible=False, on_select=self._on_schema_sheet_change),
                                         ft.Dropdown(ref=self.label_column_dropdown, label="Label Column",
                                                     width=400, visible=False),
                                         ft.Dropdown(ref=self.description_column_dropdown,
                                                     label="Description Column (optional)", width=400, visible=False),
                                         ft.Text("", ref=self.schema_preview_text, selectable=True),
                                     ], spacing=10),
-                                ),
-                            ],
+                                ], expand=True),
+                            ], expand=True),
                         ),
                     ], spacing=10),
                     padding=20,
@@ -338,7 +351,7 @@ class OllamaClassifierApp:
                         ft.Divider(),
                         ft.TextField(ref=self.system_prompt_field, label="Custom System Prompt (optional)",
                                      multiline=True, min_lines=3, max_lines=6,
-                                     helper_text="Override the default classification prompt"),
+                                     helper="Override the default classification prompt"),
                         ft.Text("Classification Method:", weight=ft.FontWeight.W_500),
                         ft.RadioGroup(
                             ref=self.classify_method_radio,
@@ -348,7 +361,7 @@ class OllamaClassifierApp:
                             ]),
                             value="classify",
                         ),
-                        ft.Text("Output Format:", weight=ft.FontWeight.W_500, padding=ft.padding.only(top=10)),
+                        ft.Text("Output Format:", weight=ft.FontWeight.W_500, margin=ft.margin.only(top=10)),
                         ft.RadioGroup(
                             ref=self.output_format_radio,
                             content=ft.Column([
@@ -378,7 +391,9 @@ class OllamaClassifierApp:
                         ft.Container(
                             content=ft.Column(
                                 controls=[ft.DataTable(
-                                    ref=self.results_table, columns=[], rows=[],
+                                    ref=self.results_table,
+                                    columns=[ft.DataColumn(ft.Text(""))],
+                                    rows=[],
                                     border=ft.border.all(1, ft.Colors.OUTLINE),
                                     horizontal_lines=ft.border.BorderSide(1, ft.Colors.OUTLINE),
                                 )],
@@ -454,13 +469,13 @@ class OllamaClassifierApp:
         backend = e.control.value
         default_ep = DEFAULT_ENDPOINTS.get(backend, "")
         self.endpoint_field.current.value = default_ep
-        await self.page.update_async()
+        self.page.update()
 
     async def _on_test_connection(self, e: ft.ControlEvent):
         self.test_connection_btn.current.disabled = True
         self.connection_status.current.value = "Testing connection..."
         self.connection_status.current.color = ft.Colors.GREY
-        await self.page.update_async()
+        self.page.update()
 
         backend_type = self.backend_dropdown.current.value
         endpoint = self.endpoint_field.current.value
@@ -476,7 +491,7 @@ class OllamaClassifierApp:
                     headers["Authorization"] = f"Bearer {api_key}"
                 tmp_client = AsyncClient(host=endpoint, headers=headers)
                 models_resp = await tmp_client.list()
-                model_names = sorted(m["name"] for m in models_resp.get("models", []))
+                model_names = sorted(m.model for m in models_resp.models if m.model)
                 if model_names:
                     self.model_field.current.value = model_names[0]
                 self.connection_status.current.value = f"✓ Connected — {len(model_names)} model(s) found."
@@ -500,20 +515,20 @@ class OllamaClassifierApp:
             self.connection_status.current.color = ft.Colors.RED
         finally:
             self.test_connection_btn.current.disabled = False
-            await self.page.update_async()
+            self.page.update()
 
     async def _on_theme_change(self, e: ft.ControlEvent):
         is_dark = e.control.value
         self.config["theme"] = "dark" if is_dark else "light"
         self.page.theme_mode = ft.ThemeMode.DARK if is_dark else ft.ThemeMode.LIGHT
         save_config(self.config)
-        await self.page.update_async()
+        self.page.update()
 
     async def _on_save_settings(self, e: ft.ControlEvent):
         self.config["backend_type"] = self.backend_dropdown.current.value
         self.config["endpoint"] = self.endpoint_field.current.value
         self.config["model"] = self.model_field.current.value
-        self.config["batch_size"] = self.batch_size_field.current.value or "1"
+        self.config["batch_size"] = (self.batch_size_field.current.value if self.batch_size_field.current else None) or "1"
         save_config(self.config)
 
         api_key = self.api_key_field.current.value
@@ -598,7 +613,7 @@ class OllamaClassifierApp:
         except Exception as ex:
             await self._show_dialog("Error Loading File", str(ex))
 
-        await self.page.update_async()
+        self.page.update()
 
     async def _on_data_sheet_change(self, e: ft.ControlEvent):
         import polars as pl
@@ -614,7 +629,7 @@ class OllamaClassifierApp:
             self._refresh_data_preview()
         except Exception as ex:
             await self._show_dialog("Error Loading Sheet", str(ex))
-        await self.page.update_async()
+        self.page.update()
 
     def _refresh_data_preview(self):
         if self.data_df is None:
@@ -639,11 +654,11 @@ class OllamaClassifierApp:
                           on_click=lambda ev, r=row: self._on_remove_label(r)),
         ], spacing=10)
         self.manual_labels_list.current.controls.append(row)
-        await self.page.update_async()
+        self.page.update()
 
     async def _on_remove_label(self, row: ft.Row):
         self.manual_labels_list.current.controls.remove(row)
-        await self.page.update_async()
+        self.page.update()
 
     async def _on_select_schema_file(self, e: ft.ControlEvent):
         import polars as pl
@@ -685,7 +700,7 @@ class OllamaClassifierApp:
 
         except Exception as ex:
             await self._show_dialog("Error Loading Schema File", str(ex))
-        await self.page.update_async()
+        self.page.update()
 
     async def _on_schema_sheet_change(self, e: ft.ControlEvent):
         import polars as pl
@@ -703,7 +718,7 @@ class OllamaClassifierApp:
             self._refresh_schema_preview()
         except Exception as ex:
             await self._show_dialog("Error Loading Sheet", str(ex))
-        await self.page.update_async()
+        self.page.update()
 
     def _refresh_schema_preview(self):
         if self.schema_df is None:
@@ -720,8 +735,7 @@ class OllamaClassifierApp:
 
     def _collect_labels(self) -> dict[str, str]:
         """Collect labels from either manual input or schema file."""
-        # Determine active tab (Tabs is inside the first Card)
-        active_tab = self.schema_view.current.controls[0].content.controls[2].selected_index  # type: ignore[union-attr]
+        active_tab = self.schema_tabs.current.selected_index
 
         if active_tab == 0:
             labels: dict[str, str] = {}
@@ -805,14 +819,14 @@ class OllamaClassifierApp:
         self.results = []
         self.results_table.current.rows = []
         self.results_table.current.columns = []
-        await self.page.update_async()
+        self.page.update()
 
         try:
             for i in range(0, len(texts), batch_size):
                 batch = texts[i:i + batch_size]
                 self.results_status.current.value = f"Classifying {min(i + batch_size, len(texts))}/{len(texts)}…"
                 self.results_progress.current.value = min(i + batch_size, len(texts)) / len(texts)
-                await self.page.update_async()
+                self.page.update()
 
                 if batch_size == 1 and method == "score":
                     # Single-item scoring — use per-item async call for progress
@@ -855,7 +869,7 @@ class OllamaClassifierApp:
                             self.results.append({"text": text_str, "prediction": f"ERROR: {batch_ex}", "confidence": 0.0})
                             self._add_error_row(text_str, i == 0 and len(self.results) == 1)
 
-                await self.page.update_async()
+                self.page.update()
 
             self.results_status.current.value = f"✓ Done — classified {len(texts)} item(s)."
             self.results_status.current.color = ft.Colors.GREEN
@@ -868,7 +882,7 @@ class OllamaClassifierApp:
             self._classifying = False
             self.run_btn.current.disabled = False
             self.results_progress.current.visible = False
-            await self.page.update_async()
+            self.page.update()
 
     def _result_to_dict(self, result, text_str: str, output_format: str) -> dict[str, Any]:
         """Convert a ClassificationResult to a dict based on output format."""
@@ -993,46 +1007,54 @@ class OllamaClassifierApp:
 
     async def _pick_file(self, allowed_extensions: list[str] | None = None,
                          dialog_title: str = "Select file") -> str | None:
-        fp = ft.FilePicker()
-        result = await fp.pick_file(
+        files = await ft.FilePicker().pick_files(
             file_type=ft.FilePickerFileType.CUSTOM,
             allowed_extensions=allowed_extensions or [],
             dialog_title=dialog_title,
         )
-        if result and result.files:
-            return result.files[0].path
+        if files:
+            return files[0].path
         return None
 
     async def _pick_save_file(self, allowed_extensions: list[str] | None = None,
                               dialog_title: str = "Save file",
                               suggested_name: str = "results.xlsx") -> str | None:
-        fp = ft.FilePicker()
-        result = await fp.save_file(
+        return await ft.FilePicker().save_file(
             file_type=ft.FilePickerFileType.CUSTOM,
             allowed_extensions=allowed_extensions or [],
             dialog_title=dialog_title,
             file_name=suggested_name,
         )
-        return result
 
     async def _show_dialog(self, title: str, message: str):
+        dismissed = asyncio.Event()
+
+        def _on_dismiss(e):
+            dismissed.set()
+
         dlg = ft.AlertDialog(
             title=ft.Text(title),
             content=ft.Text(message, selectable=True),
-            actions=[ft.TextButton("OK", on_click=lambda e: self.page.close(dlg))],
+            actions=[ft.TextButton("OK", on_click=lambda e: self.page.pop_dialog())],
+            on_dismiss=_on_dismiss,
         )
-        self.page.overlay.append(dlg)
-        await self.page.update_async()
-        await dlg.wait_dismiss()
+        self.page.show_dialog(dlg)
+        await dismissed.wait()
 
 
 # ======================================================================
 # Entry point
 # ======================================================================
 
+async def _flet_main(page: ft.Page):
+    """Flet entry point — creates the app and runs its main loop."""
+    app = OllamaClassifierApp(page)
+    await app.main()
+
+
 def main():
     """Entry point for the Flet app (desktop mode)."""
-    ft.app(target=OllamaClassifierApp)
+    ft.run(main=_flet_main)
 
 
 if __name__ == "__main__":
