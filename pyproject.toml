@@ -10,7 +10,8 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "Luigi Palumbo", email = "luigi.palumbo@example.com" },
+    { name = "Luigi Palumbo"},
+    { name = "Mengting Yu"}
 ]
 keywords = ["ollama", "classifier", "text-classification", "llm", "flet", "gui", "vllm", "sglang", "llama-cpp"]
 classifiers = [
@@ -29,16 +30,40 @@ dependencies = [
     "ollama-classifier[backends]>=0.3.0",
     "polars>=1.40.0",
     "openpyxl>=3.1.5",
+    "xlsxwriter>=3.2.0",
     "pyshortcuts>=1.9.7",
 ]
 
 [project.scripts]
-ollama-classifier-gui = "ollama_classifier_gui.app:main"
+ollama-classifier-gui = "ollama_classifier_gui.main:main"
 
 [project.urls]
-Homepage = "https://github.com/paluigi-moltis/ollama-classifier-gui"
-Repository = "https://github.com/paluigi-moltis/ollama-classifier-gui"
-Issues = "https://github.com/paluigi-moltis/ollama-classifier-gui/issues"
+Homepage = "https://github.com/paluigi/ollama-classifier-gui"
+Repository = "https://github.com/paluigi/ollama-classifier-gui"
+Issues = "https://github.com/paluigi/ollama-classifier-gui/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ollama_classifier_gui"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.6.0",
+    "black>=24.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+ignore = ["E501"]

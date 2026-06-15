@@ -51,6 +51,13 @@ pip install ollama-classifier-gui
 ollama-classifier-gui
 ```
 
+### Run from source
+
+```bash
+uv sync
+uv run python -m ollama_classifier_gui.main
+```
+
 ## Usage
 
 ### 1. Settings tab
@@ -82,6 +89,10 @@ Then choose:
 - Monitor progress in real-time
 - Click **Save Results** to export to Excel (original data + classification columns)
 
+### 5. Info tab
+- Shows the **application version** and a link to the **GitHub repository** (both read from the package metadata defined in `pyproject.toml`)
+- Click "Open in Browser" to open the repository in your default browser
+
 ## Configuration
 
 Settings are stored in a JSON config file:
@@ -106,3 +117,14 @@ API keys are stored separately using the OS native secure storage (Keychain, Cre
 ## License
 
 MIT
+
+## Change Log
+
+- **0.2.1** — Fix launch & runtime bugs
+  - Fix the Schema tab "Classification Labels" card that failed to render (Tabs/TabBarView now have bounded height; tab switching wired via `on_change`)
+  - Fix "Save Results" Excel export: remove invalid `engine` argument and add `xlsxwriter` (the polars 1.40 writer backend)
+  - Rename entry module `app.py` → `main.py` (run directly with `python -m ollama_classifier_gui.main`)
+  - Resolve all Flet deprecation warnings (`ElevatedButton`→`Button`, `border.all`→`Border.all`, `margin.only`→`Margin.only`) to prepare for Flet 1.0
+  - Add `tests/` smoke tests; fix CI Python matrix (3.11/3.12)
+- **0.2.2** — Add Info section
+  - New "Info" navigation tab showing the application version and GitHub repository link (sourced from `pyproject.toml` via `importlib.metadata`)
