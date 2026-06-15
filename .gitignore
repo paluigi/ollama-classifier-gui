@@ -21,3 +21,5 @@ Thumbs.db
 # Environment
 .env
 PLAN.md
+.claude/*
+.kilo/*
