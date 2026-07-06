@@ -43,6 +43,7 @@ class OllamaClassifierApp:
         self.test_connection_btn = ft.Ref[ft.Button]()
         self.connection_status = ft.Ref[ft.Text]()
         self.batch_size_field = ft.Ref[ft.TextField]()
+        self.max_calls_field = ft.Ref[ft.TextField]()
 
         # ---- UI refs: Data Input ----
         self.data_file_path_text = ft.Ref[ft.Text]()
@@ -555,6 +556,16 @@ class OllamaClassifierApp:
                                     ]
                                 ),
                                 value="classify",
+                                on_change=self._on_classify_method_change,
+                            ),
+                            ft.TextField(
+                                ref=self.max_calls_field,
+                                label="Max Calls (generate only)",
+                                value="1",
+                                width=200,
+                                keyboard_type=ft.KeyboardType.NUMBER,
+                                visible=False,
+                                helper="Max API calls per item (1=fast, higher=more exact)",
                             ),
                             ft.Text(
                                 "Output Format:",
@@ -1089,6 +1100,12 @@ class OllamaClassifierApp:
     # Classification
     # ==================================================================
 
+    async def _on_classify_method_change(self, e: ft.ControlEvent):
+        """Toggle max_calls field visibility based on method selection."""
+        method = e.control.value
+        self.max_calls_field.current.visible = method == "generate"
+        self.page.update()
+
     async def _on_run_classification(self, e: ft.ControlEvent):
         if self._classifying:
             return
@@ -1120,6 +1137,14 @@ class OllamaClassifierApp:
         method = self.classify_method_radio.current.value
         output_format = self.output_format_radio.current.value
         system_prompt = self.system_prompt_field.current.value or None
+
+        # Parse max_calls (only used by generate method)
+        max_calls: int | None = None
+        if method == "generate":
+            try:
+                max_calls = max(1, int(self.max_calls_field.current.value or "1"))
+            except ValueError:
+                max_calls = 1
 
         # Parse batch size
         try:
@@ -1174,6 +1199,7 @@ class OllamaClassifierApp:
                                     text=text_str,
                                     choices=choices,
                                     system_prompt=system_prompt,
+                                    max_calls=max_calls,
                                 )
                             else:
                                 result = await classifier.aclassify(
@@ -1208,6 +1234,7 @@ class OllamaClassifierApp:
                                 texts=[str(t) for t in batch],
                                 choices=choices,
                                 system_prompt=system_prompt,
+                                max_calls=max_calls,
                             )
                         else:
                             results = await classifier.abatch_classify(
