@@ -32,9 +32,7 @@ class OllamaClassifierApp:
         self.secure_storage = fss.SecureStorage()
 
         # Backend state
-        self._ollama_client: Any | None = None
-        self._ollama_classifier: Any | None = None
-        self._llm_classifier: Any | None = None
+        self._classifier: Any | None = None
 
         # ---- UI refs: Settings ----
         self.backend_dropdown = ft.Ref[ft.Dropdown]()
@@ -548,11 +546,11 @@ class OllamaClassifierApp:
                                     [
                                         ft.Radio(
                                             value="classify",
-                                            label="Classify (single call, prediction + confidence)",
+                                            label="Classify (multi-call, exact confidence — slower)",
                                         ),
                                         ft.Radio(
-                                            value="score",
-                                            label="Score (multi-call, all probabilities via softmax)",
+                                            value="generate",
+                                            label="Generate (adaptive, approximate confidence — faster)",
                                         ),
                                     ]
                                 ),
@@ -699,52 +697,40 @@ class OllamaClassifierApp:
         model = self.config.get("model", "llama3.2")
         api_key = await self.secure_storage.get("api_key") or ""
 
-        if backend_type == "ollama":
-            return await self._get_ollama_classifier(endpoint, model, api_key)
-        else:
-            return self._get_llm_classifier(backend_type, endpoint, model, api_key)
-
-    async def _get_ollama_classifier(self, host: str, model: str, api_key: str):
-        """Create / return the Ollama-based classifier."""
-        from ollama import AsyncClient
-        from ollama_classifier import OllamaClassifier
-
-        headers: dict[str, str] = {}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        self._ollama_client = AsyncClient(host=host, headers=headers)
-        self._ollama_classifier = OllamaClassifier(self._ollama_client, model=model)
-        return self._ollama_classifier
-
-    def _get_llm_classifier(
-        self, backend_type: str, endpoint: str, model: str, api_key: str
-    ):
-        """Create / return the generic LLMClassifier with the chosen backend."""
+        backend = self._create_backend(backend_type, endpoint, model, api_key)
         from ollama_classifier import LLMClassifier
 
-        if backend_type == "vllm":
+        self._classifier = LLMClassifier(backend)
+        return self._classifier
+
+    def _create_backend(
+        self, backend_type: str, endpoint: str, model: str, api_key: str
+    ):
+        """Create the appropriate backend based on backend_type."""
+        if backend_type == "ollama":
+            from ollama_classifier.backends import OllamaBackend
+
+            return OllamaBackend(model=model, host=endpoint)
+        elif backend_type == "vllm":
             from ollama_classifier.backends import VLLMBackend
 
-            backend = VLLMBackend(
+            return VLLMBackend(
                 model=model, base_url=endpoint, api_key=api_key or None
             )
         elif backend_type == "sglang":
             from ollama_classifier.backends import SGLangBackend
 
-            backend = SGLangBackend(
+            return SGLangBackend(
                 model=model, base_url=endpoint, api_key=api_key or None
             )
         elif backend_type == "llamacpp":
             from ollama_classifier.backends import LlamaCppBackend
 
-            backend = LlamaCppBackend(
+            return LlamaCppBackend(
                 model=model, base_url=endpoint, api_key=api_key or None
             )
         else:
             raise ValueError(f"Unknown backend type: {backend_type}")
-
-        self._llm_classifier = LLMClassifier(backend)
-        return self._llm_classifier
 
     # ==================================================================
     # Settings handlers
@@ -1178,13 +1164,13 @@ class OllamaClassifierApp:
                 ) / len(texts)
                 self.page.update()
 
-                if batch_size == 1 and method == "score":
-                    # Single-item scoring — use per-item async call for progress
+                if batch_size == 1 and method == "generate":
+                    # Single-item generation — use per-item async call for progress
                     for text in batch:
                         text_str = str(text)
                         try:
-                            if method == "score":
-                                result = await classifier.ascore(
+                            if method == "generate":
+                                result = await classifier.agenerate(
                                     text=text_str,
                                     choices=choices,
                                     system_prompt=system_prompt,
@@ -1217,8 +1203,8 @@ class OllamaClassifierApp:
                 else:
                     # Batch classify or batch generate
                     try:
-                        if method == "score":
-                            results = await classifier.abatch_score(
+                        if method == "generate":
+                            results = await classifier.abatch_generate(
                                 texts=[str(t) for t in batch],
                                 choices=choices,
                                 system_prompt=system_prompt,
