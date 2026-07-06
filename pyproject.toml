@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ollama-classifier-gui"
-version = "0.3.0"
+version = "0.4.0"
 description = "A desktop GUI application for text classification using LLMs (Ollama, vLLM, SGLang, llama.cpp)"
 readme = "README.md"
 license = "MIT"
