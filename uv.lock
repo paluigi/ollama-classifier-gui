@@ -344,42 +344,43 @@ wheels = [
 
 [[package]]
 name = "ollama"
-version = "0.6.1"
+version = "0.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/5a/652dac4b7affc2b37b95386f8ae78f22808af09d720689e3d7a86b6ed98e/ollama-0.6.1.tar.gz", hash = "sha256:478c67546836430034b415ed64fa890fd3d1ff91781a9d548b3325274e69d7c6", size = 51620, upload-time = "2025-11-13T23:02:17.416Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/72/5f12423b6b39ca8430fbe56f77fcf4ef60f63067c7c4a2e30e200ed9ec16/ollama-0.6.2.tar.gz", hash = "sha256:936d55daa684f474364c098611c933626f8d6c7d67065c5b7ae0c477b508b07f", size = 53145, upload-time = "2026-04-29T21:21:15.018Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/4f/4a617ee93d8208d2bcf26b2d8b9402ceaed03e3853c754940e2290fed063/ollama-0.6.1-py3-none-any.whl", hash = "sha256:fc4c984b345735c5486faeee67d8a265214a31cbb828167782dc642ce0a2bf8c", size = 14354, upload-time = "2025-11-13T23:02:16.292Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/ab/d6722beeb2d10f7a3b9ff49375708904fde18f82b5609a0bc4aeb5996a4d/ollama-0.6.2-py3-none-any.whl", hash = "sha256:3ad7daab28e5a973445c36a73882a3ef698c2ebb00e21e308652741577509f7d", size = 15115, upload-time = "2026-04-29T21:21:13.794Z" },
 ]
 
 [[package]]
 name = "ollama-classifier"
-version = "0.3.0"
+version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ollama" },
+    { name = "httpx" },
+    { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/a3/e25d4505aa11691faeb69773ce2b587ad7b4f7d6617dd848037d8fd38508/ollama_classifier-0.3.0.tar.gz", hash = "sha256:1f7c5ebc1038a601161a2ec1326c62267481b9ad9dbb72d0f1e21f4095366bb1", size = 11253, upload-time = "2026-04-27T08:52:40.757Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/64/00/1dd918ba5b5a4520803a66996fab4e0c7f658a99307046e0fa9998b03e7f/ollama_classifier-0.4.1.tar.gz", hash = "sha256:a94b968e5d8246b69ee8575b37b191c4761792b33808e99f82f8a9390204c4bb", size = 22215, upload-time = "2026-07-06T21:30:28.748Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/32/b4/dcea9e38b97307f6ddbf8cce06b49afcdf9499df80d1038a62d6d8cc7ac3/ollama_classifier-0.3.0-py3-none-any.whl", hash = "sha256:42add244dba464fa59e9c81f6977fa5c80cc688fbd0b9e5b597d029363bf59b5", size = 18762, upload-time = "2026-04-27T08:52:39.318Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/75/26c280e63ed75328c318002f98703520dd1fb5e83d8facbd51d119b6ee1e/ollama_classifier-0.4.1-py3-none-any.whl", hash = "sha256:d8b83b62b24318105043374c09a183040c4c4136ac5b14cd71d7f84382c748fb", size = 30786, upload-time = "2026-07-06T21:30:27.531Z" },
 ]
 
 [package.optional-dependencies]
-backends = [
-    { name = "httpx" },
+ollama = [
+    { name = "ollama" },
 ]
 
 [[package]]
 name = "ollama-classifier-gui"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "flet" },
     { name = "flet-secure-storage" },
-    { name = "ollama-classifier", extra = ["backends"] },
+    { name = "ollama-classifier", extra = ["ollama"] },
     { name = "openpyxl" },
     { name = "polars" },
     { name = "pyshortcuts" },
@@ -397,7 +398,7 @@ dev = [
 requires-dist = [
     { name = "flet", specifier = ">=0.84.0" },
     { name = "flet-secure-storage", specifier = ">=0.84.0" },
-    { name = "ollama-classifier", extras = ["backends"], specifier = ">=0.3.0" },
+    { name = "ollama-classifier", extras = ["ollama"], specifier = ">=0.4.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "polars", specifier = ">=1.40.0" },
     { name = "pyshortcuts", specifier = ">=1.9.7" },
