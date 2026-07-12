@@ -40,11 +40,13 @@ def test_config_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(utils, "config_path", lambda: tmp_path / "config.json")
     cfg = load_config()
     assert cfg["backend_type"] == "ollama"
+    assert cfg["max_calls"] == "1"  # default max_calls in config
     cfg["model"] = "test-model"
     save_config(cfg)
     assert (tmp_path / "config.json").is_file()
     reloaded = load_config()
     assert reloaded["model"] == "test-model"
+    assert reloaded["max_calls"] == "1"  # persisted
 
 
 def test_excel_export_works(tmp_path):
