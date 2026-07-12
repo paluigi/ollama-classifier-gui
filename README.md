@@ -13,8 +13,8 @@ Built with [Flet](https://flet.dev/) and powered by [ollama-classifier](https://
 - **Load data** from CSV or Excel files
 - **Flexible classification schema**: define labels manually or load from a CSV/Excel file
 - **Two classification methods**:
-  - *Classify*: single-call prediction with confidence score
-  - *Score*: multi-call evaluation with softmax probabilities for all labels
+  - *Classify*: multi-call completion scoring with exact, calibrated confidence
+  - *Generate*: adaptive constrained generation, budget-controlled via `max_calls` (1=fast/approximate, higher=more exact, 0/unlimited=fully exact)
 - **Output format options**:
   - *Top label only*: prediction + confidence
   - *All labels*: each label becomes a column with its probability
@@ -80,7 +80,8 @@ Define your classification labels:
 - **Load from File**: select a CSV/Excel file containing labels (and optionally descriptions)
 
 Then choose:
-- **Classification Method**: Classify (fast) or Score (accurate probabilities)
+- **Classification Method**: Classify (exact, N calls) or Generate (adaptive, budget-controlled)
+- **Max Calls** (generate only): Controls the API call budget per item. `1` = single fast call (approximate), higher values = adaptive resolution up to that many calls, `0` or empty = unlimited (fully exact, resolves all labels)
 - **Output Format**: Top label only or All labels (each as a column)
 - Optionally override the **system prompt**
 
@@ -120,6 +121,11 @@ MIT
 
 ## Change Log
 
+- **0.5.0** — Update for ollama-classifier v0.5.0 compatibility
+  - Update dependency to `ollama-classifier[ollama]>=0.5.0`
+  - The `max_calls` field now supports `0` or empty = unlimited (fully exact mode), matching the Python `generate(max_calls=None)` API
+  - `max_calls` value is now persisted to the config file
+  - Updated README to accurately describe the two classification methods (Classify = multi-call exact, Generate = adaptive budget-controlled)
 - **0.2.1** — Fix launch & runtime bugs
   - Fix the Schema tab "Classification Labels" card that failed to render (Tabs/TabBarView now have bounded height; tab switching wired via `on_change`)
   - Fix "Save Results" Excel export: remove invalid `engine` argument and add `xlsxwriter` (the polars 1.40 writer backend)

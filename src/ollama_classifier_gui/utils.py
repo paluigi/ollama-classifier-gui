@@ -85,6 +85,7 @@ def _default_config() -> dict[str, str]:
         "model": "llama3.2",
         "theme": "system",
         "batch_size": "1",
+        "max_calls": "1",
         "output_format": "top_label",
     }
 

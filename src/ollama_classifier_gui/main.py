@@ -421,6 +421,7 @@ class OllamaClassifierApp:
     # ---------- Schema view ----------
 
     def _build_schema_view(self):
+        max_calls = self.config.get("max_calls", "1")
         self.schema_view.current.controls = [
             ft.Card(
                 content=ft.Container(
@@ -561,11 +562,11 @@ class OllamaClassifierApp:
                             ft.TextField(
                                 ref=self.max_calls_field,
                                 label="Max Calls (generate only)",
-                                value="1",
+                                value=max_calls,
                                 width=200,
                                 keyboard_type=ft.KeyboardType.NUMBER,
                                 visible=False,
-                                helper="Max API calls per item (1=fast, higher=more exact)",
+                                helper="Max API calls per item (1=fast, higher=more exact, 0 or empty=unlimited/exact)",
                             ),
                             ft.Text(
                                 "Output Format:",
@@ -820,6 +821,11 @@ class OllamaClassifierApp:
         self.config["batch_size"] = (
             self.batch_size_field.current.value
             if self.batch_size_field.current
+            else None
+        ) or "1"
+        self.config["max_calls"] = (
+            self.max_calls_field.current.value
+            if self.max_calls_field.current
             else None
         ) or "1"
         save_config(self.config)
@@ -1139,12 +1145,13 @@ class OllamaClassifierApp:
         system_prompt = self.system_prompt_field.current.value or None
 
         # Parse max_calls (only used by generate method)
+        # 0 or empty string = None (unlimited / fully exact)
         max_calls: int | None = None
         if method == "generate":
-            try:
-                max_calls = max(1, int(self.max_calls_field.current.value or "1"))
-            except ValueError:
-                max_calls = 1
+            raw_val = (self.max_calls_field.current.value or "").strip()
+            if raw_val and int(raw_val) > 0:
+                max_calls = int(raw_val)
+            # else: max_calls stays None (unlimited)
 
         # Parse batch size
         try:
