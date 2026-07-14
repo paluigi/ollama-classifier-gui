@@ -357,15 +357,15 @@ wheels = [
 
 [[package]]
 name = "ollama-classifier"
-version = "0.4.1"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/64/00/1dd918ba5b5a4520803a66996fab4e0c7f658a99307046e0fa9998b03e7f/ollama_classifier-0.4.1.tar.gz", hash = "sha256:a94b968e5d8246b69ee8575b37b191c4761792b33808e99f82f8a9390204c4bb", size = 22215, upload-time = "2026-07-06T21:30:28.748Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/61/72/c28820c79164d4dae7189c3009e89eff209c2710c70ab66fe458ca4630c8/ollama_classifier-0.6.0.tar.gz", hash = "sha256:2188f99f833acf621cbf67eae723ae7d631ba4a647a696d46d1928eeb50caf31", size = 25382, upload-time = "2026-07-14T20:27:07.982Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/75/26c280e63ed75328c318002f98703520dd1fb5e83d8facbd51d119b6ee1e/ollama_classifier-0.4.1-py3-none-any.whl", hash = "sha256:d8b83b62b24318105043374c09a183040c4c4136ac5b14cd71d7f84382c748fb", size = 30786, upload-time = "2026-07-06T21:30:27.531Z" },
+    { url = "https://files.pythonhosted.org/packages/32/ba/11a01052396e4db9705b0306064541cc3eeaa574a258c0174cf540a71eaa/ollama_classifier-0.6.0-py3-none-any.whl", hash = "sha256:d21379c0596828da78ad7e3a18b7470764d8cd2256530db1aae6953298c58715", size = 35821, upload-time = "2026-07-14T20:27:06.805Z" },
 ]
 
 [package.optional-dependencies]
@@ -375,7 +375,7 @@ ollama = [
 
 [[package]]
 name = "ollama-classifier-gui"
-version = "0.4.0"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "flet" },
@@ -398,7 +398,7 @@ dev = [
 requires-dist = [
     { name = "flet", specifier = ">=0.84.0" },
     { name = "flet-secure-storage", specifier = ">=0.84.0" },
-    { name = "ollama-classifier", extras = ["ollama"], specifier = ">=0.4.0" },
+    { name = "ollama-classifier", extras = ["ollama"], specifier = ">=0.6.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "polars", specifier = ">=1.40.0" },
     { name = "pyshortcuts", specifier = ">=1.9.7" },

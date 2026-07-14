@@ -120,6 +120,9 @@ MIT
 
 ## Change Log
 
+- **0.6.0** — Version bump
+  - Bump project version to 0.6.0 across `pyproject.toml`, `__init__.py`, and `uv.lock`
+  - Align `ollama-classifier` dependency to `>=0.6.0`
 - **0.2.1** — Fix launch & runtime bugs
   - Fix the Schema tab "Classification Labels" card that failed to render (Tabs/TabBarView now have bounded height; tab switching wired via `on_change`)
   - Fix "Save Results" Excel export: remove invalid `engine` argument and add `xlsxwriter` (the polars 1.40 writer backend)
