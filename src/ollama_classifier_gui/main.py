@@ -682,7 +682,7 @@ class OllamaClassifierApp:
                             "Open in Browser",
                             icon=ft.Icons.OPEN_IN_NEW,
                             on_click=lambda e: self.page.launch_url(repo_url),
-                        )
+                        ),
                     ],
                     spacing=5,
                 )
@@ -725,9 +725,7 @@ class OllamaClassifierApp:
         elif backend_type == "vllm":
             from ollama_classifier.backends import VLLMBackend
 
-            return VLLMBackend(
-                model=model, base_url=endpoint, api_key=api_key or None
-            )
+            return VLLMBackend(model=model, base_url=endpoint, api_key=api_key or None)
         elif backend_type == "sglang":
             from ollama_classifier.backends import SGLangBackend
 
